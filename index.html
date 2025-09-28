@@ -5,7 +5,7 @@
 <title>Безкрайна Черна Дъска</title>
 <style>
 html, body {
-  margin: 0; height: 100%; overflow: hidden; background: black;
+  margin: 0; padding: 0; height: 100%; overflow: hidden; background: black;
 }
 canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
@@ -33,10 +33,21 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .btn:active { transform: scale(0.95); }
 
 /* Color palettes */
-.color-picker, .bg-picker { display: flex; gap: 6px; margin: 0 10px; }
-.color, .bg-btn { width: 22px; height: 22px; border-radius: 50%; border: 2px solid white; cursor: pointer; transition: transform 0.2s, border 0.2s; }
-.color:hover, .bg-btn:hover { transform: scale(1.2); }
-.bg-btn.active { border: 3px solid yellow; }
+.color-picker, .bg-picker { display: flex; gap: 4px; margin: 0 10px; }
+.color, .bg-btn { 
+  width: 20px; height: 20px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.3); 
+  cursor: pointer; transition: transform 0.2s, border 0.2s, box-shadow 0.2s; 
+}
+.color:hover, .bg-btn:hover { 
+  transform: scale(1.1); 
+  border: 1px solid rgba(255,255,255,0.8);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.color.active { 
+  border: 2px solid white; 
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+}
+.bg-btn.active { border: 2px solid yellow; }
 
 /* Brush size slider */
 .slider { appearance: none; width: 100px; height: 6px; border-radius: 4px; background: #555; outline: none; cursor: pointer; }
@@ -56,6 +67,83 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
 /* Brush/Eraser Preview */
 #brushPreview { position:fixed; pointer-events:none; border-radius:50%; border:2px solid white; transform:translate(-50%,-50%); z-index:1002; }
+.mode-active { background: rgba(255,255,255,0.3) !important; }
+
+/* Tool indicator */
+#toolIndicator {
+  position: fixed; bottom: 20px; left: 20px;
+  background: rgba(25,25,25,0.8); color: white;
+  padding: 8px 16px; border-radius: 20px;
+  font-family: sans-serif; font-size: 14px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  z-index: 1000;
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* How to use popup */
+#howToUsePopup {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.8); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-family: sans-serif; z-index: 3000;
+  opacity: 1; transition: opacity 0.3s ease;
+}
+#howToUsePopup.hidden { opacity: 0; pointer-events: none; display: none; }
+
+/* Export popup */
+#exportPopup {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.8); color: white;
+  display: none; align-items: center; justify-content: center;
+  font-family: sans-serif; z-index: 3000;
+}
+
+.export-content {
+  background: rgba(30,30,30,0.95); padding: 30px; border-radius: 16px;
+  max-width: 400px; text-align: center; line-height: 1.6;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.export-content h2 { margin-top: 0; color: #4CAF50; }
+
+.export-options {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  margin: 20px 0;
+}
+.export-btn {
+  background: rgba(76, 175, 80, 0.2); border: 1px solid #4CAF50;
+  color: white; padding: 12px 16px; border-radius: 8px;
+  cursor: pointer; transition: all 0.2s; font-size: 14px;
+}
+.export-btn:hover { background: rgba(76, 175, 80, 0.3); transform: scale(1.02); }
+
+.export-actions {
+  display: flex; justify-content: center; gap: 12px; margin-top: 20px;
+}
+.export-actions button {
+  background: #444; color: white; border: none;
+  padding: 8px 16px; border-radius: 8px; cursor: pointer;
+  font-size: 14px; transition: all 0.2s;
+}
+.export-actions button:hover { background: #666; }
+.export-actions button.primary { background: #4CAF50; }
+.export-actions button.primary:hover { background: #45a049; }
+
+.how-to-content {
+  background: rgba(30,30,30,0.95); padding: 30px; border-radius: 16px;
+  max-width: 500px; text-align: left; line-height: 1.6;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.how-to-content h2 { margin-top: 0; color: #4CAF50; text-align: center; }
+.how-to-content ul { padding-left: 20px; }
+.how-to-content li { margin: 8px 0; }
+.how-to-content .close-btn {
+  background: #4CAF50; color: white; border: none;
+  padding: 10px 20px; border-radius: 8px; cursor: pointer;
+  font-size: 14px; display: block; margin: 20px auto 0;
+  transition: background 0.2s;
+}
+.how-to-content .close-btn:hover { background: #45a049; }
 </style>
 </head>
 <body>
@@ -68,18 +156,21 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
   <button id="export" class="btn">💾</button>
 
   <div class="color-picker">
+    <div class="color" data-color="#000000" style="background:#000"></div>
+    <div class="color" data-color="#404040" style="background:#404040"></div>
     <div class="color" data-color="#ffffff" style="background:#fff"></div>
     <div class="color" data-color="#ff0000" style="background:#f00"></div>
+    <div class="color" data-color="#ff6600" style="background:#ff6600"></div>
+    <div class="color" data-color="#ffcc00" style="background:#ffcc00"></div>
     <div class="color" data-color="#00ff00" style="background:#0f0"></div>
+    <div class="color" data-color="#0080ff" style="background:#0080ff"></div>
     <div class="color" data-color="#0000ff" style="background:#00f"></div>
-    <div class="color" data-color="#ffff00" style="background:#ff0"></div>
-    <div class="color" data-color="#ff00ff" style="background:#f0f"></div>
-    <div class="color" data-color="#ff8000" style="background:#f80"></div>
+    <div class="color" data-color="#8000ff" style="background:#8000ff"></div>
   </div>
 
   <input type="range" id="size" class="slider" min="1" max="20" value="2">
 
-  <button id="drawMode" class="btn">✏️</button>
+  <button id="drawMode" class="btn mode-active">✏️</button>
   <button id="eraser" class="btn">🩹</button>
 
   <div class="bg-picker">
@@ -106,6 +197,48 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 <!-- Brush Preview -->
 <div id="brushPreview"></div>
 
+<!-- Tool Indicator -->
+<div id="toolIndicator">
+  <span id="toolIcon">✏️</span>
+  <span id="toolName">Четка</span>
+</div>
+
+<!-- How to Use Popup -->
+<div id="howToUsePopup">
+  <div class="how-to-content">
+    <h2>🎨 Как да използвам черната дъска?</h2>
+    <ul>
+      <li><strong>Рисуване:</strong> Кликни и влачи с мишката за да рисуваш</li>
+      <li><strong>Мащабиране:</strong> Използвай колелцето на мишката</li>
+      <li><strong>Преместване:</strong> Държи Shift или средното копче на мишката</li>
+      <li><strong>Цветове:</strong> Избери цвят от палитрата</li>
+      <li><strong>Размер:</strong> Регулирай размера на четката със слайдъра</li>
+      <li><strong>Гума:</strong> Натисни иконата 🩹 за да изтриваш</li>
+      <li><strong>Назад/Напред:</strong> Ctrl+Z за назад, Ctrl+Shift+Z за напред</li>
+      <li><strong>Скриване на инструменти:</strong> Натисни 👁 в горния десен ъгъл</li>
+    </ul>
+    <button onclick="document.getElementById('howToUsePopup').style.display='none'" class="close-btn">Разбрах, започвам!</button>
+  </div>
+</div>
+
+<!-- Export Popup -->
+<div id="exportPopup">
+  <div class="export-content">
+    <h2>💾 Експортирай рисунката</h2>
+    
+    <div class="export-options">
+      <button class="export-btn" onclick="exportDrawing('png')">PNG изображение</button>
+      <button class="export-btn" onclick="exportDrawing('jpg')">JPG изображение</button>
+      <button class="export-btn" onclick="exportDrawing('svg')">SVG вектор</button>
+      <button class="export-btn" onclick="exportDrawing('pdf')">PDF документ</button>
+    </div>
+
+    <div class="export-actions">
+      <button onclick="document.getElementById('exportPopup').style.display='none'">Отказ</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const canvas=document.getElementById("canvas"), ctx=canvas.getContext("2d");
 let width=window.innerWidth, height=window.innerHeight; canvas.width=width; canvas.height=height;
@@ -129,19 +262,186 @@ const sizeSlider=document.getElementById("size");
 const colorCircles=document.querySelectorAll(".color");
 const bgButtons=document.querySelectorAll(".bg-btn");
 const brushPreview=document.getElementById("brushPreview");
+const toolIndicator=document.getElementById("toolIndicator");
+const toolIcon=document.getElementById("toolIcon");
+const toolName=document.getElementById("toolName");
+const howToUsePopup=document.getElementById("howToUsePopup");
+const exportPopup=document.getElementById("exportPopup");
 
 let scale=1, offsetX=0, offsetY=0;
 function screenToWorld(x,y){return {x:(x-offsetX)/scale, y:(y-offsetY)/scale};}
 
+// Export function - defined early so HTML can access it
+function exportDrawing(format) {
+  // Always use current canvas size
+  const exportWidth = canvas.width;
+  const exportHeight = canvas.height;
+
+  if (format === 'svg') {
+    exportSVG(exportWidth, exportHeight);
+  } else if (format === 'pdf') {
+    exportPDF(exportWidth, exportHeight);
+  } else {
+    exportRaster(format, exportWidth, exportHeight);
+  }
+  
+  document.getElementById('exportPopup').style.display = 'none';
+}
+
+// Export raster images (PNG/JPG)
+function exportRaster(format, width, height) {
+  const tempCanvas = document.createElement('canvas');
+  const tempCtx = tempCanvas.getContext('2d');
+  tempCanvas.width = width;
+  tempCanvas.height = height;
+
+  // Fill background
+  tempCtx.fillStyle = bgColor;
+  tempCtx.fillRect(0, 0, width, height);
+
+  // Calculate scale to fit drawing
+  const bounds = getDrawingBounds();
+  if (bounds) {
+    const scaleX = width / (bounds.maxX - bounds.minX + 100);
+    const scaleY = height / (bounds.maxY - bounds.minY + 100);
+    const drawScale = Math.min(scaleX, scaleY, 1);
+    
+    tempCtx.translate(width/2, height/2);
+    tempCtx.scale(drawScale, drawScale);
+    tempCtx.translate(-(bounds.minX + bounds.maxX)/2, -(bounds.minY + bounds.maxY)/2);
+  }
+
+  // Draw all strokes
+  tempCtx.lineCap = "round";
+  tempCtx.lineJoin = "round";
+  
+  for(const s of strokes) {
+    if(s.isEraser) {
+      tempCtx.strokeStyle = bgColor;
+      tempCtx.fillStyle = bgColor;
+    } else {
+      tempCtx.strokeStyle = s.color;
+      tempCtx.fillStyle = s.color;
+    }
+    
+    tempCtx.lineWidth = s.width;
+    if(s.points.length > 1) {
+      tempCtx.beginPath();
+      tempCtx.moveTo(s.points[0].x, s.points[0].y);
+      for(let i = 1; i < s.points.length; i++) {
+        tempCtx.lineTo(s.points[i].x, s.points[i].y);
+      }
+      tempCtx.stroke();
+    } else if(s.points.length === 1) {
+      tempCtx.beginPath();
+      tempCtx.arc(s.points[0].x, s.points[0].y, s.width/2, 0, Math.PI * 2);
+      tempCtx.fill();
+    }
+  }
+
+  // Download
+  const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png';
+  const img = tempCanvas.toDataURL(mimeType, 0.9);
+  const a = document.createElement('a');
+  a.href = img;
+  a.download = `drawing.${format}`;
+  a.click();
+}
+
+// Export SVG
+function exportSVG(width, height) {
+  const bounds = getDrawingBounds();
+  const svgWidth = bounds ? (bounds.maxX - bounds.minX + 100) : width;
+  const svgHeight = bounds ? (bounds.maxY - bounds.minY + 100) : height;
+  const offsetX = bounds ? bounds.minX - 50 : 0;
+  const offsetY = bounds ? bounds.minY - 50 : 0;
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${offsetX} ${offsetY} ${svgWidth} ${svgHeight}">`;
+  svg += `<rect width="100%" height="100%" fill="${bgColor}"/>`;
+  
+  for(const s of strokes) {
+    if(s.points.length > 1 && !s.isEraser) {
+      const pathData = `M${s.points[0].x},${s.points[0].y} ` + 
+                      s.points.slice(1).map(p => `L${p.x},${p.y}`).join(' ');
+      svg += `<path d="${pathData}" stroke="${s.color}" stroke-width="${s.width}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;
+    } else if(s.points.length === 1 && !s.isEraser) {
+      svg += `<circle cx="${s.points[0].x}" cy="${s.points[0].y}" r="${s.width/2}" fill="${s.color}"/>`;
+    }
+  }
+  
+  svg += '</svg>';
+  
+  const blob = new Blob([svg], {type: 'image/svg+xml'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'drawing.svg';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Export PDF (simplified - creates a data URL and downloads)
+function exportPDF(width, height) {
+  // For PDF, we'll export as PNG and let the user convert if needed
+  // Full PDF generation would require a library like jsPDF
+  exportRaster('png', width, height);
+  alert('PDF export като PNG. За истински PDF, моля използвайте онлайн конвертор.');
+}
+
+// Get drawing boundaries
+function getDrawingBounds() {
+  if(strokes.length === 0) return null;
+  
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  
+  for(const s of strokes) {
+    for(const p of s.points) {
+      minX = Math.min(minX, p.x - s.width/2);
+      minY = Math.min(minY, p.y - s.width/2);
+      maxX = Math.max(maxX, p.x + s.width/2);
+      maxY = Math.max(maxY, p.y + s.width/2);
+    }
+  }
+  
+  return {minX, minY, maxX, maxY};
+}
+
 // Redraw
 function redraw(){
-  ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle=bgColor; ctx.fillRect(0,0,width,height);
-  ctx.setTransform(scale,0,0,scale,offsetX,offsetY); ctx.lineCap="round"; ctx.lineJoin="round";
+  ctx.setTransform(1,0,0,1,0,0); 
+  ctx.fillStyle=bgColor; 
+  ctx.fillRect(0,0,width,height);
+  ctx.setTransform(scale,0,0,scale,offsetX,offsetY); 
+  ctx.lineCap="round"; 
+  ctx.lineJoin="round";
+  
   for(const s of strokes){
-    ctx.strokeStyle=s.color; ctx.lineWidth=s.width;
-    ctx.beginPath(); ctx.moveTo(s.points[0].x,s.points[0].y);
-    for(let i=1;i<s.points.length;i++) ctx.lineTo(s.points[i].x,s.points[i].y);
-    ctx.stroke();
+    ctx.globalCompositeOperation = "source-over";
+    
+    if(s.isEraser) {
+      // For eraser, draw with background color
+      ctx.strokeStyle = bgColor;
+      ctx.fillStyle = bgColor;
+    } else {
+      // Normal drawing mode
+      ctx.strokeStyle = s.color;
+      ctx.fillStyle = s.color;
+    }
+    
+    ctx.lineWidth=s.width;
+    if(s.points.length > 1) {
+      ctx.beginPath(); 
+      ctx.moveTo(s.points[0].x,s.points[0].y);
+      for(let i=1;i<s.points.length;i++) {
+        ctx.lineTo(s.points[i].x,s.points[i].y);
+      }
+      ctx.stroke();
+    } else if(s.points.length === 1) {
+      // Handle single point (dot)
+      ctx.beginPath();
+      ctx.arc(s.points[0].x, s.points[0].y, s.width/2, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
@@ -149,99 +449,243 @@ function redraw(){
 function updateBrushPreview(){
   brushPreview.style.width=currentSize+"px";
   brushPreview.style.height=currentSize+"px";
-  brushPreview.style.borderColor=(mode==="erase"?"white":currentColor);
+  brushPreview.style.borderColor=(mode==="erase"?"red":currentColor);
+  brushPreview.style.borderStyle=(mode==="erase"?"dashed":"solid");
 }
+
+function updateModeButtons() {
+  drawModeBtn.classList.toggle("mode-active", mode === "draw");
+  eraserBtn.classList.toggle("mode-active", mode === "erase");
+  
+  // Update tool indicator
+  if(mode === "draw") {
+    toolIcon.textContent = "✏️";
+    toolName.textContent = "Четка";
+  } else {
+    toolIcon.textContent = "🩹";
+    toolName.textContent = "Гума";
+  }
+}
+
 document.addEventListener("mousemove", e=>{
   brushPreview.style.left=e.clientX+"px";
   brushPreview.style.top=e.clientY+"px";
 });
 
 // Color picker
-colorCircles.forEach(c=>c.addEventListener("click",()=>{ currentColor=c.dataset.color; updateBrushPreview(); }));
-sizeSlider.oninput=()=>{ currentSize=parseInt(sizeSlider.value); updateBrushPreview(); };
-bgButtons.forEach(b=>{ b.addEventListener("click",()=>{
-  bgColor=b.dataset.bg; bgButtons.forEach(btn=>btn.classList.remove("active")); b.classList.add("active"); redraw();
-})});
-drawModeBtn.onclick=()=>{ mode="draw"; updateBrushPreview(); };
-eraserBtn.onclick=()=>{ mode="erase"; updateBrushPreview(); };
+colorCircles.forEach(c=>c.addEventListener("click",()=>{ 
+  // Remove active class from all colors
+  colorCircles.forEach(color => color.classList.remove("active"));
+  // Add active class to clicked color
+  c.classList.add("active");
+  currentColor=c.dataset.color; 
+  updateBrushPreview(); 
+}));
 
-// Mouse
+sizeSlider.oninput=()=>{ 
+  currentSize=parseInt(sizeSlider.value); 
+  updateBrushPreview(); 
+};
+
+bgButtons.forEach(b=>{ 
+  b.addEventListener("click",()=>{
+    bgColor=b.dataset.bg; 
+    bgButtons.forEach(btn=>btn.classList.remove("active")); 
+    b.classList.add("active"); 
+    redraw();
+  })
+});
+
+drawModeBtn.onclick=()=>{ 
+  mode="draw"; 
+  updateBrushPreview(); 
+  updateModeButtons();
+};
+
+eraserBtn.onclick=()=>{ 
+  mode="erase"; 
+  updateBrushPreview(); 
+  updateModeButtons();
+};
+
+// Mouse events
 canvas.addEventListener("mousedown", e=>{
-  if(e.button===1||e.shiftKey){ isPanning=true; lastMouse={x:e.clientX,y:e.clientY}; return; }
+  if(e.button===1||e.shiftKey){ 
+    isPanning=true; 
+    lastMouse={x:e.clientX,y:e.clientY}; 
+    return; 
+  }
   if(e.button===0){
-    isDrawing=true; const world=screenToWorld(e.clientX,e.clientY);
-    currentStroke={points:[world], width:currentSize/scale, color:currentColor};
+    isDrawing=true; 
+    const world=screenToWorld(e.clientX,e.clientY);
+    
+    if(mode === "draw") {
+      currentStroke={
+        points:[world], 
+        width:currentSize/scale, 
+        color:currentColor, 
+        isEraser:false
+      };
+    } else { // eraser mode
+      currentStroke={
+        points:[world], 
+        width:currentSize/scale, 
+        color:bgColor,
+        isEraser:true
+      };
+    }
+    
     strokes.push(currentStroke);
     redraw();
   }
 });
+
 canvas.addEventListener("mousemove", e=>{
-  if(isPanning){ offsetX+=e.clientX-lastMouse.x; offsetY+=e.clientY-lastMouse.y; lastMouse={x:e.clientX,y:e.clientY}; redraw(); return; }
-  if(isDrawing){
+  if(isPanning){ 
+    offsetX+=e.clientX-lastMouse.x; 
+    offsetY+=e.clientY-lastMouse.y; 
+    lastMouse={x:e.clientX,y:e.clientY}; 
+    redraw(); 
+    return; 
+  }
+  if(isDrawing && currentStroke){
     const world=screenToWorld(e.clientX,e.clientY);
-    if(mode==="draw"){ currentStroke.points.push(world); }
-    else if(mode==="erase"){ eraseAt(world, currentSize/scale); }
+    currentStroke.points.push(world);
     redraw();
   }
 });
+
 canvas.addEventListener("mouseup", e=>{
-  if(isPanning){ isPanning=false; return; }
-  if(isDrawing){ isDrawing=false;
-    undoStack.push({ undo:()=>{ strokes.pop(); redraw(); }, redo:()=>{ strokes.push(currentStroke); redraw(); } });
-    redoStack.length=0;
+  if(isPanning){ 
+    isPanning=false; 
+    return; 
+  }
+  if(isDrawing){ 
+    isDrawing=false;
+    if(currentStroke) {
+      // Save state for undo
+      const strokeToSave = {...currentStroke, points: [...currentStroke.points]};
+      undoStack.push({ 
+        undo:()=>{ 
+          strokes.pop(); 
+          redraw(); 
+        }, 
+        redo:()=>{ 
+          strokes.push(strokeToSave); 
+          redraw(); 
+        } 
+      });
+      redoStack.length=0;
+    }
+    currentStroke = null;
   }
 });
+
 canvas.addEventListener("wheel", e=>{
   e.preventDefault();
   const mouse={x:e.clientX,y:e.clientY};
   const worldBefore=screenToWorld(mouse.x, mouse.y);
   const factor=e.deltaY<0?1.1:1/1.1;
-  scale*=factor; scale=Math.min(Math.max(scale,0.05),50);
+  scale*=factor; 
+  scale=Math.min(Math.max(scale,0.05),50);
   const worldAfter=screenToWorld(mouse.x, mouse.y);
   offsetX+=(worldAfter.x-worldBefore.x)*scale;
   offsetY+=(worldAfter.y-worldBefore.y)*scale;
   redraw();
 },{passive:false});
-window.addEventListener("resize", ()=>{ width=window.innerWidth; height=window.innerHeight; canvas.width=width; canvas.height=height; redraw(); });
+
+window.addEventListener("resize", ()=>{ 
+  width=window.innerWidth; 
+  height=window.innerHeight; 
+  canvas.width=width; 
+  canvas.height=height; 
+  redraw(); 
+});
 
 // Undo/Redo
-function undo(){ if(undoStack.length>0){ const cmd=undoStack.pop(); cmd.undo(); redoStack.push(cmd); } }
-function redo(){ if(redoStack.length>0){ const cmd=redoStack.pop(); cmd.redo(); undoStack.push(cmd); } }
-undoBtn.onclick=undo; redoBtn.onclick=redo;
-window.addEventListener("keydown", e=>{ if(e.ctrlKey && (e.key==="z"||e.key==="Z")){ e.preventDefault(); undo(); } });
-function exportPNG(){ const img=canvas.toDataURL("image/png"); const a=document.createElement("a"); a.href=img; a.download="canvas.png"; a.click(); }
+function undo(){ 
+  if(undoStack.length>0){ 
+    const cmd=undoStack.pop(); 
+    cmd.undo(); 
+    redoStack.push(cmd); 
+  } 
+}
+function redo(){ 
+  if(redoStack.length>0){ 
+    const cmd=redoStack.pop(); 
+    cmd.redo(); 
+    undoStack.push(cmd); 
+  } 
+}
+
+undoBtn.onclick=undo; 
+redoBtn.onclick=redo;
+
+function exportPNG(){ 
+  exportPopup.style.display = "flex";
+}
 exportBtn.onclick=exportPNG;
 
-// Clear
+// Clear confirmation
 const confirmPopup=document.getElementById("confirmPopup");
 const yesBtn=document.getElementById("confirmYes");
 const noBtn=document.getElementById("confirmNo");
-clearBtn.onclick=()=>{ confirmPopup.classList.add("show"); };
-yesBtn.onclick=()=>{ strokes=[]; undoStack=[]; redoStack=[]; redraw(); confirmPopup.classList.remove("show"); };
-noBtn.onclick=()=>{ confirmPopup.classList.remove("show"); };
+
+clearBtn.onclick=()=>{ 
+  confirmPopup.classList.add("show"); 
+};
+
+yesBtn.onclick=()=>{ 
+  strokes=[]; 
+  undoStack=[]; 
+  redoStack=[]; 
+  redraw(); 
+  confirmPopup.classList.remove("show"); 
+};
+
+noBtn.onclick=()=>{ 
+  confirmPopup.classList.remove("show"); 
+};
 
 // Toolbar toggle
 const toggleBtn=document.getElementById("toggleToolbar");
 const toolbar=document.getElementById("toolbar");
 let toolbarVisible=true;
-toggleBtn.onclick=()=>{ toolbarVisible=!toolbarVisible; toolbarVisible?toolbar.classList.remove("hidden"):toolbar.classList.add("hidden"); };
 
-// --- Eraser logic ---
-function eraseAt(point, radius){
-  let newStrokes=[];
-  for(const s of strokes){
-    let segments=[], current=[];
-    for(const p of s.points){
-      const dx=p.x-point.x, dy=p.y-point.y;
-      if(Math.sqrt(dx*dx+dy*dy)>radius){ current.push(p); }
-      else{ if(current.length>0){ segments.push(current); current=[]; } }
-    }
-    if(current.length>0) segments.push(current);
-    for(const seg of segments){ if(seg.length>0) newStrokes.push({points:seg, width:s.width, color:s.color}); }
+toggleBtn.onclick=()=>{ 
+  toolbarVisible=!toolbarVisible; 
+  if(toolbarVisible) {
+    toolbar.classList.remove("hidden");
+  } else {
+    toolbar.classList.add("hidden");
   }
-  strokes=newStrokes;
-}
+};
+
+// Close popup with Escape key
+window.addEventListener("keydown", e => {
+  if(e.key === "Escape") {
+    if(howToUsePopup.style.display !== "none") {
+      howToUsePopup.style.display = "none";
+    }
+    if(exportPopup.style.display === "flex") {
+      exportPopup.style.display = "none";
+    }
+  }
+  if(e.ctrlKey && (e.key==="z"||e.key==="Z")){ 
+    e.preventDefault(); 
+    if(e.shiftKey) {
+      redo();
+    } else {
+      undo(); 
+    }
+  } 
+});
+
+// Initialize
 updateBrushPreview();
+updateModeButtons();
+// Set default active color (white)
+document.querySelector('.color[data-color="#ffffff"]').classList.add("active");
 redraw();
 </script>
 </body>
