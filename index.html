@@ -206,7 +206,6 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
   <button id="clear" class="btn">🗑</button>
   <button id="clearStorage" class="btn" title="Изтрий запазената рисунка">💣</button>
   <button id="export" class="btn">💾</button>
-  <button id="gridToggle" class="btn" title="Покажи/скрий мрежата">📐</button>
 
   <div class="color-picker">
     <div class="color" data-color="#000000" style="background:#000"></div>
@@ -324,7 +323,6 @@ const redoBtn=document.getElementById("redo");
 const clearBtn=document.getElementById("clear");
 const clearStorageBtn=document.getElementById("clearStorage");
 const exportBtn=document.getElementById("export");
-const gridToggleBtn=document.getElementById("gridToggle");
 const drawModeBtn=document.getElementById("drawMode");
 const eraserBtn=document.getElementById("eraser");
 const sizeSlider=document.getElementById("size");
@@ -341,7 +339,6 @@ const howToUsePopup=document.getElementById("howToUsePopup");
 const exportPopup=document.getElementById("exportPopup");
 
 let scale=1, offsetX=0, offsetY=0;
-let showGrid=true;
 function screenToWorld(x,y){return {x:(x-offsetX)/scale, y:(y-offsetY)/scale};}
 
 // ============= LOCAL STORAGE FUNCTIONS =============
@@ -356,7 +353,6 @@ function saveToLocalStorage() {
       offsetY: offsetY,
       currentColor: currentColor,
       currentSize: currentSize,
-      showGrid: showGrid,
       timestamp: Date.now()
     };
     localStorage.setItem('blackboard_drawing', JSON.stringify(data));
@@ -383,7 +379,6 @@ function loadFromLocalStorage() {
       offsetY = data.offsetY || 0;
       currentColor = data.currentColor || "#ffffff";
       currentSize = data.currentSize || 2;
-      showGrid = data.showGrid !== undefined ? data.showGrid : true;
       
       // Update UI
       sizeSlider.value = currentSize;
@@ -598,36 +593,6 @@ function redraw(){
   // Draw the offscreen canvas onto main canvas
   ctx.setTransform(1,0,0,1,0,0);
   ctx.drawImage(offCanvas, 0, 0);
-  
-  // Now draw grid on top
-  ctx.setTransform(scale,0,0,scale,offsetX,offsetY);
-  
-  if(showGrid) {
-    ctx.strokeStyle = "rgba(255,255,255,0.05)";
-    ctx.lineWidth = 1/scale;
-    
-    const worldTL = screenToWorld(0, 0);
-    const worldBR = screenToWorld(width, height);
-    
-    const startX = Math.floor(worldTL.x / TILE_SIZE) * TILE_SIZE;
-    const startY = Math.floor(worldTL.y / TILE_SIZE) * TILE_SIZE;
-    const endX = Math.ceil(worldBR.x / TILE_SIZE) * TILE_SIZE;
-    const endY = Math.ceil(worldBR.y / TILE_SIZE) * TILE_SIZE;
-    
-    for(let x = startX; x <= endX; x += TILE_SIZE) {
-      ctx.beginPath();
-      ctx.moveTo(x, startY);
-      ctx.lineTo(x, endY);
-      ctx.stroke();
-    }
-    
-    for(let y = startY; y <= endY; y += TILE_SIZE) {
-      ctx.beginPath();
-      ctx.moveTo(startX, y);
-      ctx.lineTo(endX, y);
-      ctx.stroke();
-    }
-  }
 }
 
 // Brush preview
@@ -641,7 +606,6 @@ function updateBrushPreview(){
 function updateModeButtons() {
   drawModeBtn.classList.toggle("mode-active", mode === "draw");
   eraserBtn.classList.toggle("mode-active", mode === "erase");
-  gridToggleBtn.classList.toggle("mode-active", showGrid);
   
   if(mode === "draw") {
     toolIcon.textContent = "✏️";
@@ -717,15 +681,7 @@ eraserBtn.onclick=()=>{
   updateModeButtons();
 };
 
-// Grid toggle
-gridToggleBtn.onclick=()=>{ 
-  showGrid = !showGrid;
-  updateModeButtons();
-  redraw();
-  autoSave();
-};
-
-// Clear storage button
+// Mouse events
 clearStorageBtn.onclick=clearLocalStorage;
 
 // Mouse events
@@ -807,7 +763,7 @@ canvas.addEventListener("wheel", e=>{
   const worldBefore=screenToWorld(mouse.x, mouse.y);
   const factor=e.deltaY<0?1.1:1/1.1;
   scale*=factor; 
-  scale=Math.min(Math.max(scale,0.05),50);
+  // NO LIMITS - Truly infinite zoom!
   const worldAfter=screenToWorld(mouse.x, mouse.y);
   offsetX+=(worldAfter.x-worldBefore.x)*scale;
   offsetY+=(worldAfter.y-worldBefore.y)*scale;
