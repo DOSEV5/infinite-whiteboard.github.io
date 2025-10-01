@@ -118,6 +118,20 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
   display: flex; align-items: center; gap: 8px;
 }
 
+/* Save indicator */
+#saveIndicator {
+  position: fixed; bottom: 20px; right: 20px;
+  background: rgba(76, 175, 80, 0.9); color: white;
+  padding: 8px 16px; border-radius: 20px;
+  font-family: sans-serif; font-size: 12px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+#saveIndicator.show { opacity: 1; }
+
 /* How to use popup */
 #howToUsePopup {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -190,6 +204,7 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
   <button id="undo" class="btn">⤺</button>
   <button id="redo" class="btn">⤻</button>
   <button id="clear" class="btn">🗑</button>
+  <button id="clearStorage" class="btn" title="Изтрий запазената рисунка">💣</button>
   <button id="export" class="btn">💾</button>
   <button id="gridToggle" class="btn" title="Покажи/скрий мрежата">📐</button>
 
@@ -245,6 +260,9 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
   <span id="toolName">Четка</span>
 </div>
 
+<!-- Save Indicator -->
+<div id="saveIndicator">💾 Запазено!</div>
+
 <!-- How to Use Popup -->
 <div id="howToUsePopup">
   <div class="how-to-content">
@@ -258,7 +276,8 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
       <li><strong>Гума:</strong> Натисни иконата 🩹 за да изтриваш</li>
       <li><strong>Назад/Напред:</strong> Ctrl+Z за назад, Ctrl+Shift+Z за напред</li>
       <li><strong>Скриване на инструменти:</strong> Натисни 👁 в горния десен ъгъл</li>
-      <li><strong>Безкрайно платно:</strong> Рисувай навсякъде - платното никога не свършва!</li>
+      <li><strong>Автоматично запазване:</strong> Рисунката се запазва автоматично и се възстановява при презареждане!</li>
+      <li><strong>Изтриване на запазеното:</strong> Натисни 💣 за да изтриеш запазената рисунка</li>
     </ul>
     <button onclick="document.getElementById('howToUsePopup').style.display='none'" class="close-btn">Разбрах, започвам!</button>
   </div>
@@ -303,6 +322,7 @@ let bgColor="#171616";
 const undoBtn=document.getElementById("undo");
 const redoBtn=document.getElementById("redo");
 const clearBtn=document.getElementById("clear");
+const clearStorageBtn=document.getElementById("clearStorage");
 const exportBtn=document.getElementById("export");
 const gridToggleBtn=document.getElementById("gridToggle");
 const drawModeBtn=document.getElementById("drawMode");
@@ -316,6 +336,7 @@ const brushPreview=document.getElementById("brushPreview");
 const toolIndicator=document.getElementById("toolIndicator");
 const toolIcon=document.getElementById("toolIcon");
 const toolName=document.getElementById("toolName");
+const saveIndicator=document.getElementById("saveIndicator");
 const howToUsePopup=document.getElementById("howToUsePopup");
 const exportPopup=document.getElementById("exportPopup");
 
@@ -323,9 +344,84 @@ let scale=1, offsetX=0, offsetY=0;
 let showGrid=true;
 function screenToWorld(x,y){return {x:(x-offsetX)/scale, y:(y-offsetY)/scale};}
 
-// Export function - defined early so HTML can access it
+// ============= LOCAL STORAGE FUNCTIONS =============
+
+function saveToLocalStorage() {
+  try {
+    const data = {
+      strokes: strokes,
+      bgColor: bgColor,
+      scale: scale,
+      offsetX: offsetX,
+      offsetY: offsetY,
+      currentColor: currentColor,
+      currentSize: currentSize,
+      showGrid: showGrid,
+      timestamp: Date.now()
+    };
+    localStorage.setItem('blackboard_drawing', JSON.stringify(data));
+    
+    // Show save indicator
+    saveIndicator.classList.add('show');
+    setTimeout(() => {
+      saveIndicator.classList.remove('show');
+    }, 1500);
+  } catch(e) {
+    console.error('Failed to save to localStorage:', e);
+  }
+}
+
+function loadFromLocalStorage() {
+  try {
+    const saved = localStorage.getItem('blackboard_drawing');
+    if(saved) {
+      const data = JSON.parse(saved);
+      strokes = data.strokes || [];
+      bgColor = data.bgColor || "#171616";
+      scale = data.scale || 1;
+      offsetX = data.offsetX || 0;
+      offsetY = data.offsetY || 0;
+      currentColor = data.currentColor || "#ffffff";
+      currentSize = data.currentSize || 2;
+      showGrid = data.showGrid !== undefined ? data.showGrid : true;
+      
+      // Update UI
+      sizeSlider.value = currentSize;
+      customColorPicker.value = currentColor;
+      
+      // Update active background button
+      bgButtons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.bg === bgColor);
+      });
+      
+      console.log('Drawing loaded from localStorage');
+      return true;
+    }
+  } catch(e) {
+    console.error('Failed to load from localStorage:', e);
+  }
+  return false;
+}
+
+function clearLocalStorage() {
+  if(confirm('Сигурни ли сте, че искате да изтриете запазената рисунка от паметта? Това действие не може да бъде отменено!')) {
+    localStorage.removeItem('blackboard_drawing');
+    alert('Запазената рисунка е изтрита от паметта! Текущата рисунка остава на екрана.');
+  }
+}
+
+// Auto-save with debounce
+let saveTimeout;
+function autoSave() {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    saveToLocalStorage();
+  }, 1000); // Save 1 second after last action
+}
+
+// ============= EXPORT FUNCTIONS =============
+
 function exportDrawing(format) {
-  // Always use current canvas size
   const exportWidth = canvas.width;
   const exportHeight = canvas.height;
 
@@ -340,18 +436,15 @@ function exportDrawing(format) {
   document.getElementById('exportPopup').style.display = 'none';
 }
 
-// Export raster images (PNG/JPG)
 function exportRaster(format, width, height) {
   const tempCanvas = document.createElement('canvas');
   const tempCtx = tempCanvas.getContext('2d');
   tempCanvas.width = width;
   tempCanvas.height = height;
 
-  // Fill background
   tempCtx.fillStyle = bgColor;
   tempCtx.fillRect(0, 0, width, height);
 
-  // Calculate scale to fit drawing
   const bounds = getDrawingBounds();
   if (bounds) {
     const scaleX = width / (bounds.maxX - bounds.minX + 100);
@@ -363,7 +456,6 @@ function exportRaster(format, width, height) {
     tempCtx.translate(-(bounds.minX + bounds.maxX)/2, -(bounds.minY + bounds.maxY)/2);
   }
 
-  // Draw all strokes
   tempCtx.lineCap = "round";
   tempCtx.lineJoin = "round";
   
@@ -391,7 +483,6 @@ function exportRaster(format, width, height) {
     }
   }
 
-  // Download
   const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png';
   const img = tempCanvas.toDataURL(mimeType, 0.9);
   const a = document.createElement('a');
@@ -400,7 +491,6 @@ function exportRaster(format, width, height) {
   a.click();
 }
 
-// Export SVG
 function exportSVG(width, height) {
   const bounds = getDrawingBounds();
   const svgWidth = bounds ? (bounds.maxX - bounds.minX + 100) : width;
@@ -432,15 +522,11 @@ function exportSVG(width, height) {
   URL.revokeObjectURL(url);
 }
 
-// Export PDF (simplified - creates a data URL and downloads)
 function exportPDF(width, height) {
-  // For PDF, we'll export as PNG and let the user convert if needed
-  // Full PDF generation would require a library like jsPDF
   exportRaster('png', width, height);
   alert('PDF export като PNG. За истински PDF, моля използвайте онлайн конвертор.');
 }
 
-// Get drawing boundaries
 function getDrawingBounds() {
   if(strokes.length === 0) return null;
   
@@ -458,15 +544,65 @@ function getDrawingBounds() {
   return {minX, minY, maxX, maxY};
 }
 
-// Redraw with infinite canvas grid
+// ============= DRAWING FUNCTIONS =============
+
 function redraw(){
+  // Clear and fill background
   ctx.setTransform(1,0,0,1,0,0); 
   ctx.fillStyle=bgColor; 
   ctx.fillRect(0,0,width,height);
   
-  // Draw grid for infinite canvas visualization (if enabled)
+  // Create an offscreen canvas for drawing (without grid)
+  const offCanvas = document.createElement('canvas');
+  offCanvas.width = width;
+  offCanvas.height = height;
+  const offCtx = offCanvas.getContext('2d');
+  
+  // Fill offscreen canvas with background
+  offCtx.fillStyle = bgColor;
+  offCtx.fillRect(0, 0, width, height);
+  
+  // Set transformation for drawing on offscreen canvas
+  offCtx.setTransform(scale,0,0,scale,offsetX,offsetY);
+  offCtx.lineCap="round"; 
+  offCtx.lineJoin="round";
+  
+  // Draw all strokes on offscreen canvas
+  for(const s of strokes){
+    if(s.isEraser) {
+      // Use destination-out to actually erase pixels
+      offCtx.globalCompositeOperation = "destination-out";
+      offCtx.strokeStyle = "rgba(0,0,0,1)";
+      offCtx.fillStyle = "rgba(0,0,0,1)";
+    } else {
+      offCtx.globalCompositeOperation = "source-over";
+      offCtx.strokeStyle = s.color;
+      offCtx.fillStyle = s.color;
+    }
+    
+    offCtx.lineWidth=s.width;
+    if(s.points.length > 1) {
+      offCtx.beginPath(); 
+      offCtx.moveTo(s.points[0].x,s.points[0].y);
+      for(let i=1;i<s.points.length;i++) {
+        offCtx.lineTo(s.points[i].x,s.points[i].y);
+      }
+      offCtx.stroke();
+    } else if(s.points.length === 1) {
+      offCtx.beginPath();
+      offCtx.arc(s.points[0].x, s.points[0].y, s.width/2, 0, Math.PI * 2);
+      offCtx.fill();
+    }
+  }
+  
+  // Draw the offscreen canvas onto main canvas
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.drawImage(offCanvas, 0, 0);
+  
+  // Now draw grid on top
+  ctx.setTransform(scale,0,0,scale,offsetX,offsetY);
+  
   if(showGrid) {
-    ctx.setTransform(scale,0,0,scale,offsetX,offsetY);
     ctx.strokeStyle = "rgba(255,255,255,0.05)";
     ctx.lineWidth = 1/scale;
     
@@ -490,36 +626,6 @@ function redraw(){
       ctx.moveTo(startX, y);
       ctx.lineTo(endX, y);
       ctx.stroke();
-    }
-  }
-  
-  ctx.setTransform(scale,0,0,scale,offsetX,offsetY);
-  ctx.lineCap="round"; 
-  ctx.lineJoin="round";
-  
-  for(const s of strokes){
-    ctx.globalCompositeOperation = "source-over";
-    
-    if(s.isEraser) {
-      ctx.strokeStyle = bgColor;
-      ctx.fillStyle = bgColor;
-    } else {
-      ctx.strokeStyle = s.color;
-      ctx.fillStyle = s.color;
-    }
-    
-    ctx.lineWidth=s.width;
-    if(s.points.length > 1) {
-      ctx.beginPath(); 
-      ctx.moveTo(s.points[0].x,s.points[0].y);
-      for(let i=1;i<s.points.length;i++) {
-        ctx.lineTo(s.points[i].x,s.points[i].y);
-      }
-      ctx.stroke();
-    } else if(s.points.length === 1) {
-      ctx.beginPath();
-      ctx.arc(s.points[0].x, s.points[0].y, s.width/2, 0, Math.PI * 2);
-      ctx.fill();
     }
   }
 }
@@ -551,6 +657,8 @@ document.addEventListener("mousemove", e=>{
   brushPreview.style.top=e.clientY+"px";
 });
 
+// ============= EVENT HANDLERS =============
+
 // Color picker
 colorCircles.forEach(c=>c.addEventListener("click",()=>{ 
   colorCircles.forEach(color => color.classList.remove("active"));
@@ -558,6 +666,7 @@ colorCircles.forEach(c=>c.addEventListener("click",()=>{
   currentColor=c.dataset.color; 
   customColorPicker.value = currentColor;
   updateBrushPreview(); 
+  autoSave();
 }));
 
 // Custom color picker
@@ -577,11 +686,13 @@ customColorPicker.addEventListener("change", ()=>{
   colorCircles.forEach(color => color.classList.remove("active"));
   customColorBtn.style.background = currentColor;
   updateBrushPreview();
+  autoSave();
 });
 
 sizeSlider.oninput=()=>{ 
   currentSize=parseInt(sizeSlider.value); 
   updateBrushPreview(); 
+  autoSave();
 };
 
 bgButtons.forEach(b=>{ 
@@ -590,6 +701,7 @@ bgButtons.forEach(b=>{
     bgButtons.forEach(btn=>btn.classList.remove("active")); 
     b.classList.add("active"); 
     redraw();
+    autoSave();
   })
 });
 
@@ -610,7 +722,11 @@ gridToggleBtn.onclick=()=>{
   showGrid = !showGrid;
   updateModeButtons();
   redraw();
+  autoSave();
 };
+
+// Clear storage button
+clearStorageBtn.onclick=clearLocalStorage;
 
 // Mouse events
 canvas.addEventListener("mousedown", e=>{
@@ -634,7 +750,6 @@ canvas.addEventListener("mousedown", e=>{
       currentStroke={
         points:[world], 
         width:currentSize/scale, 
-        color:bgColor,
         isEraser:true
       };
     }
@@ -661,7 +776,8 @@ canvas.addEventListener("mousemove", e=>{
 
 canvas.addEventListener("mouseup", e=>{
   if(isPanning){ 
-    isPanning=false; 
+    isPanning=false;
+    autoSave();
     return; 
   }
   if(isDrawing){ 
@@ -679,6 +795,7 @@ canvas.addEventListener("mouseup", e=>{
         } 
       });
       redoStack.length=0;
+      autoSave();
     }
     currentStroke = null;
   }
@@ -695,6 +812,7 @@ canvas.addEventListener("wheel", e=>{
   offsetX+=(worldAfter.x-worldBefore.x)*scale;
   offsetY+=(worldAfter.y-worldBefore.y)*scale;
   redraw();
+  autoSave();
 },{passive:false});
 
 window.addEventListener("resize", ()=>{ 
@@ -710,14 +828,16 @@ function undo(){
   if(undoStack.length>0){ 
     const cmd=undoStack.pop(); 
     cmd.undo(); 
-    redoStack.push(cmd); 
+    redoStack.push(cmd);
+    autoSave();
   } 
 }
 function redo(){ 
   if(redoStack.length>0){ 
     const cmd=redoStack.pop(); 
     cmd.redo(); 
-    undoStack.push(cmd); 
+    undoStack.push(cmd);
+    autoSave();
   } 
 }
 
@@ -743,7 +863,8 @@ yesBtn.onclick=()=>{
   undoStack=[]; 
   redoStack=[]; 
   redraw(); 
-  confirmPopup.classList.remove("show"); 
+  confirmPopup.classList.remove("show");
+  autoSave();
 };
 
 noBtn.onclick=()=>{ 
@@ -784,11 +905,27 @@ window.addEventListener("keydown", e => {
   } 
 });
 
-// Initialize
+// ============= INITIALIZATION =============
+
+// Load saved drawing on startup
+const loaded = loadFromLocalStorage();
+
+// Initialize UI
 updateBrushPreview();
 updateModeButtons();
 document.querySelector('.color[data-color="#ffffff"]').classList.add("active");
 redraw();
+
+if(loaded) {
+  console.log('Previous drawing restored!');
+  // Show a brief notification
+  saveIndicator.textContent = '✅ Възстановено!';
+  saveIndicator.classList.add('show');
+  setTimeout(() => {
+    saveIndicator.classList.remove('show');
+    saveIndicator.textContent = '💾 Запазено!';
+  }, 2000);
+}
 </script>
 </body>
 </html>
