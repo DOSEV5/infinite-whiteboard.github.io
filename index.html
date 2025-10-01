@@ -33,7 +33,7 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 .btn:active { transform: scale(0.95); }
 
 /* Color palettes */
-.color-picker, .bg-picker { display: flex; gap: 4px; margin: 0 10px; }
+.color-picker, .bg-picker { display: flex; gap: 4px; margin: 0 10px; align-items: center; }
 .color, .bg-btn { 
   width: 20px; height: 20px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.3); 
   cursor: pointer; transition: transform 0.2s, border 0.2s, box-shadow 0.2s; 
@@ -48,6 +48,43 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
   box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
 }
 .bg-btn.active { border: 2px solid yellow; }
+
+/* Custom Color Picker Wrapper */
+.custom-color-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+#customColorBtn { 
+  width: 32px; height: 32px; border-radius: 50%; 
+  border: 2px solid rgba(255,255,255,0.5);
+  cursor: pointer; position: relative; overflow: hidden;
+  transition: transform 0.2s, border 0.2s, box-shadow 0.2s;
+  background: conic-gradient(
+    red, yellow, lime, aqua, blue, magenta, red
+  );
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3), inset 0 0 0 2px rgba(0,0,0,0.3);
+}
+#customColorBtn:hover { 
+  transform: scale(1.1); 
+  border: 2px solid rgba(255,255,255,0.9);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4), inset 0 0 0 2px rgba(0,0,0,0.3);
+}
+#customColorBtn::after {
+  content: '🎨';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+  text-shadow: 0 0 3px rgba(0,0,0,0.8);
+}
+#customColor { 
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
 
 /* Brush size slider */
 .slider { appearance: none; width: 100px; height: 6px; border-radius: 4px; background: #555; outline: none; cursor: pointer; }
@@ -154,6 +191,7 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
   <button id="redo" class="btn">⤻</button>
   <button id="clear" class="btn">🗑</button>
   <button id="export" class="btn">💾</button>
+  <button id="gridToggle" class="btn" title="Покажи/скрий мрежата">📐</button>
 
   <div class="color-picker">
     <div class="color" data-color="#000000" style="background:#000"></div>
@@ -166,6 +204,10 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
     <div class="color" data-color="#0080ff" style="background:#0080ff"></div>
     <div class="color" data-color="#0000ff" style="background:#00f"></div>
     <div class="color" data-color="#8000ff" style="background:#8000ff"></div>
+    <div class="custom-color-wrapper">
+      <div id="customColorBtn"></div>
+      <input type="color" id="customColor" value="#ffffff">
+    </div>
   </div>
 
   <input type="range" id="size" class="slider" min="1" max="20" value="2">
@@ -211,11 +253,12 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
       <li><strong>Рисуване:</strong> Кликни и влачи с мишката за да рисуваш</li>
       <li><strong>Мащабиране:</strong> Използвай колелцето на мишката</li>
       <li><strong>Преместване:</strong> Държи Shift или средното копче на мишката</li>
-      <li><strong>Цветове:</strong> Избери цвят от палитрата</li>
+      <li><strong>Цветове:</strong> Избери цвят от палитрата или използвай цветния избирател</li>
       <li><strong>Размер:</strong> Регулирай размера на четката със слайдъра</li>
       <li><strong>Гума:</strong> Натисни иконата 🩹 за да изтриваш</li>
       <li><strong>Назад/Напред:</strong> Ctrl+Z за назад, Ctrl+Shift+Z за напред</li>
       <li><strong>Скриване на инструменти:</strong> Натисни 👁 в горния десен ъгъл</li>
+      <li><strong>Безкрайно платно:</strong> Рисувай навсякъде - платното никога не свършва!</li>
     </ul>
     <button onclick="document.getElementById('howToUsePopup').style.display='none'" class="close-btn">Разбрах, започвам!</button>
   </div>
@@ -241,7 +284,12 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
 <script>
 const canvas=document.getElementById("canvas"), ctx=canvas.getContext("2d");
-let width=window.innerWidth, height=window.innerHeight; canvas.width=width; canvas.height=height;
+let width=window.innerWidth, height=window.innerHeight; 
+
+// Infinite canvas with tiling system
+const TILE_SIZE = 2000;
+canvas.width=width; 
+canvas.height=height;
 
 let strokes=[], currentStroke=null;
 let undoStack=[], redoStack=[];
@@ -256,10 +304,13 @@ const undoBtn=document.getElementById("undo");
 const redoBtn=document.getElementById("redo");
 const clearBtn=document.getElementById("clear");
 const exportBtn=document.getElementById("export");
+const gridToggleBtn=document.getElementById("gridToggle");
 const drawModeBtn=document.getElementById("drawMode");
 const eraserBtn=document.getElementById("eraser");
 const sizeSlider=document.getElementById("size");
 const colorCircles=document.querySelectorAll(".color");
+const customColorPicker=document.getElementById("customColor");
+const customColorBtn=document.getElementById("customColorBtn");
 const bgButtons=document.querySelectorAll(".bg-btn");
 const brushPreview=document.getElementById("brushPreview");
 const toolIndicator=document.getElementById("toolIndicator");
@@ -269,6 +320,7 @@ const howToUsePopup=document.getElementById("howToUsePopup");
 const exportPopup=document.getElementById("exportPopup");
 
 let scale=1, offsetX=0, offsetY=0;
+let showGrid=true;
 function screenToWorld(x,y){return {x:(x-offsetX)/scale, y:(y-offsetY)/scale};}
 
 // Export function - defined early so HTML can access it
@@ -406,12 +458,42 @@ function getDrawingBounds() {
   return {minX, minY, maxX, maxY};
 }
 
-// Redraw
+// Redraw with infinite canvas grid
 function redraw(){
   ctx.setTransform(1,0,0,1,0,0); 
   ctx.fillStyle=bgColor; 
   ctx.fillRect(0,0,width,height);
-  ctx.setTransform(scale,0,0,scale,offsetX,offsetY); 
+  
+  // Draw grid for infinite canvas visualization (if enabled)
+  if(showGrid) {
+    ctx.setTransform(scale,0,0,scale,offsetX,offsetY);
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.lineWidth = 1/scale;
+    
+    const worldTL = screenToWorld(0, 0);
+    const worldBR = screenToWorld(width, height);
+    
+    const startX = Math.floor(worldTL.x / TILE_SIZE) * TILE_SIZE;
+    const startY = Math.floor(worldTL.y / TILE_SIZE) * TILE_SIZE;
+    const endX = Math.ceil(worldBR.x / TILE_SIZE) * TILE_SIZE;
+    const endY = Math.ceil(worldBR.y / TILE_SIZE) * TILE_SIZE;
+    
+    for(let x = startX; x <= endX; x += TILE_SIZE) {
+      ctx.beginPath();
+      ctx.moveTo(x, startY);
+      ctx.lineTo(x, endY);
+      ctx.stroke();
+    }
+    
+    for(let y = startY; y <= endY; y += TILE_SIZE) {
+      ctx.beginPath();
+      ctx.moveTo(startX, y);
+      ctx.lineTo(endX, y);
+      ctx.stroke();
+    }
+  }
+  
+  ctx.setTransform(scale,0,0,scale,offsetX,offsetY);
   ctx.lineCap="round"; 
   ctx.lineJoin="round";
   
@@ -419,11 +501,9 @@ function redraw(){
     ctx.globalCompositeOperation = "source-over";
     
     if(s.isEraser) {
-      // For eraser, draw with background color
       ctx.strokeStyle = bgColor;
       ctx.fillStyle = bgColor;
     } else {
-      // Normal drawing mode
       ctx.strokeStyle = s.color;
       ctx.fillStyle = s.color;
     }
@@ -437,7 +517,6 @@ function redraw(){
       }
       ctx.stroke();
     } else if(s.points.length === 1) {
-      // Handle single point (dot)
       ctx.beginPath();
       ctx.arc(s.points[0].x, s.points[0].y, s.width/2, 0, Math.PI * 2);
       ctx.fill();
@@ -456,8 +535,8 @@ function updateBrushPreview(){
 function updateModeButtons() {
   drawModeBtn.classList.toggle("mode-active", mode === "draw");
   eraserBtn.classList.toggle("mode-active", mode === "erase");
+  gridToggleBtn.classList.toggle("mode-active", showGrid);
   
-  // Update tool indicator
   if(mode === "draw") {
     toolIcon.textContent = "✏️";
     toolName.textContent = "Четка";
@@ -474,13 +553,31 @@ document.addEventListener("mousemove", e=>{
 
 // Color picker
 colorCircles.forEach(c=>c.addEventListener("click",()=>{ 
-  // Remove active class from all colors
   colorCircles.forEach(color => color.classList.remove("active"));
-  // Add active class to clicked color
   c.classList.add("active");
   currentColor=c.dataset.color; 
+  customColorPicker.value = currentColor;
   updateBrushPreview(); 
 }));
+
+// Custom color picker
+customColorBtn.addEventListener("click", ()=>{
+  customColorPicker.click();
+});
+
+customColorPicker.addEventListener("input", ()=>{
+  currentColor = customColorPicker.value;
+  colorCircles.forEach(color => color.classList.remove("active"));
+  customColorBtn.style.background = currentColor;
+  updateBrushPreview();
+});
+
+customColorPicker.addEventListener("change", ()=>{
+  currentColor = customColorPicker.value;
+  colorCircles.forEach(color => color.classList.remove("active"));
+  customColorBtn.style.background = currentColor;
+  updateBrushPreview();
+});
 
 sizeSlider.oninput=()=>{ 
   currentSize=parseInt(sizeSlider.value); 
@@ -508,6 +605,13 @@ eraserBtn.onclick=()=>{
   updateModeButtons();
 };
 
+// Grid toggle
+gridToggleBtn.onclick=()=>{ 
+  showGrid = !showGrid;
+  updateModeButtons();
+  redraw();
+};
+
 // Mouse events
 canvas.addEventListener("mousedown", e=>{
   if(e.button===1||e.shiftKey){ 
@@ -526,7 +630,7 @@ canvas.addEventListener("mousedown", e=>{
         color:currentColor, 
         isEraser:false
       };
-    } else { // eraser mode
+    } else {
       currentStroke={
         points:[world], 
         width:currentSize/scale, 
@@ -563,7 +667,6 @@ canvas.addEventListener("mouseup", e=>{
   if(isDrawing){ 
     isDrawing=false;
     if(currentStroke) {
-      // Save state for undo
       const strokeToSave = {...currentStroke, points: [...currentStroke.points]};
       undoStack.push({ 
         undo:()=>{ 
@@ -684,7 +787,6 @@ window.addEventListener("keydown", e => {
 // Initialize
 updateBrushPreview();
 updateModeButtons();
-// Set default active color (white)
 document.querySelector('.color[data-color="#ffffff"]').classList.add("active");
 redraw();
 </script>
