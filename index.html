@@ -228,6 +228,7 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
   <button id="drawMode" class="btn mode-active">✏️</button>
   <button id="eraser" class="btn">🩹</button>
+  <button id="pressureToggle" class="btn mode-active" title="Натиск на таблет">📊</button>
 
   <div class="bg-picker">
     <div class="bg-btn" data-bg="#000000" style="background:#000;"></div>
@@ -268,6 +269,7 @@ canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
     <h2>🎨 Как да използвам черната дъска?</h2>
     <ul>
       <li><strong>Рисуване:</strong> Кликни и влачи с мишката за да рисуваш</li>
+      <li><strong>Графичен таблет:</strong> Поддържа натиск на перото! Използвай 📊 за вкл/изкл</li>
       <li><strong>Мащабиране:</strong> Използвай колелцето на мишката</li>
       <li><strong>Преместване:</strong> Държи Shift или средното копче на мишката</li>
       <li><strong>Цветове:</strong> Избери цвят от палитрата или използвай цветния избирател</li>
@@ -318,6 +320,10 @@ let currentSize=parseInt(document.getElementById("size").value);
 let mode="draw";
 let bgColor="#171616";
 
+// Graphic tablet support
+let usePressure=true;
+let currentPressure=0.5;
+
 const undoBtn=document.getElementById("undo");
 const redoBtn=document.getElementById("redo");
 const clearBtn=document.getElementById("clear");
@@ -325,6 +331,7 @@ const clearStorageBtn=document.getElementById("clearStorage");
 const exportBtn=document.getElementById("export");
 const drawModeBtn=document.getElementById("drawMode");
 const eraserBtn=document.getElementById("eraser");
+const pressureToggleBtn=document.getElementById("pressureToggle");
 const sizeSlider=document.getElementById("size");
 const colorCircles=document.querySelectorAll(".color");
 const customColorPicker=document.getElementById("customColor");
@@ -341,6 +348,103 @@ const exportPopup=document.getElementById("exportPopup");
 let scale=1, offsetX=0, offsetY=0;
 function screenToWorld(x,y){return {x:(x-offsetX)/scale, y:(y-offsetY)/scale};}
 
+// ============= DRAWING FUNCTIONS (DEFINED FIRST) =============
+
+function redraw(){
+  // Clear and fill background
+  ctx.setTransform(1,0,0,1,0,0); 
+  ctx.fillStyle=bgColor; 
+  ctx.fillRect(0,0,width,height);
+  
+  // Create an offscreen canvas for drawing (without grid)
+  const offCanvas = document.createElement('canvas');
+  offCanvas.width = width;
+  offCanvas.height = height;
+  const offCtx = offCanvas.getContext('2d');
+  
+  // Fill offscreen canvas with background
+  offCtx.fillStyle = bgColor;
+  offCtx.fillRect(0, 0, width, height);
+  
+  // Set transformation for drawing on offscreen canvas
+  offCtx.setTransform(scale,0,0,scale,offsetX,offsetY);
+  offCtx.lineCap="round"; 
+  offCtx.lineJoin="round";
+  
+  // Draw all strokes on offscreen canvas
+  for(const s of strokes){
+    if(s.isEraser) {
+      // Use destination-out to actually erase pixels
+      offCtx.globalCompositeOperation = "destination-out";
+      offCtx.strokeStyle = "rgba(0,0,0,1)";
+      offCtx.fillStyle = "rgba(0,0,0,1)";
+    } else {
+      offCtx.globalCompositeOperation = "source-over";
+      offCtx.strokeStyle = s.color;
+      offCtx.fillStyle = s.color;
+    }
+    
+    if(s.usePressure && s.points.length > 1) {
+      // Draw with variable pressure
+      for(let i = 0; i < s.points.length - 1; i++) {
+        const p1 = s.points[i];
+        const p2 = s.points[i + 1];
+        const pressure1 = p1.pressure || 0.5;
+        const pressure2 = p2.pressure || 0.5;
+        const avgPressure = (pressure1 + pressure2) / 2;
+        
+        offCtx.lineWidth = s.width * avgPressure / 0.5;
+        offCtx.beginPath();
+        offCtx.moveTo(p1.x, p1.y);
+        offCtx.lineTo(p2.x, p2.y);
+        offCtx.stroke();
+      }
+    } else {
+      offCtx.lineWidth=s.width;
+      if(s.points.length > 1) {
+        offCtx.beginPath(); 
+        offCtx.moveTo(s.points[0].x,s.points[0].y);
+        for(let i=1;i<s.points.length;i++) {
+          offCtx.lineTo(s.points[i].x,s.points[i].y);
+        }
+        offCtx.stroke();
+      } else if(s.points.length === 1) {
+        const pressure = s.points[0].pressure || 0.5;
+        const radius = s.usePressure ? (s.width * pressure / 0.5 / 2) : (s.width / 2);
+        offCtx.beginPath();
+        offCtx.arc(s.points[0].x, s.points[0].y, radius, 0, Math.PI * 2);
+        offCtx.fill();
+      }
+    }
+  }
+  
+  // Draw the offscreen canvas onto main canvas
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.drawImage(offCanvas, 0, 0);
+}
+
+// Brush preview
+function updateBrushPreview(){
+  const displaySize = usePressure ? currentSize * currentPressure : currentSize;
+  brushPreview.style.width=displaySize+"px";
+  brushPreview.style.height=displaySize+"px";
+  brushPreview.style.borderColor=(mode==="erase"?"red":currentColor);
+  brushPreview.style.borderStyle=(mode==="erase"?"dashed":"solid");
+}
+
+function updateModeButtons() {
+  drawModeBtn.classList.toggle("mode-active", mode === "draw");
+  eraserBtn.classList.toggle("mode-active", mode === "erase");
+  
+  if(mode === "draw") {
+    toolIcon.textContent = "✏️";
+    toolName.textContent = "Четка";
+  } else {
+    toolIcon.textContent = "🩹";
+    toolName.textContent = "Гума";
+  }
+}
+
 // ============= LOCAL STORAGE FUNCTIONS =============
 
 function saveToLocalStorage() {
@@ -353,6 +457,7 @@ function saveToLocalStorage() {
       offsetY: offsetY,
       currentColor: currentColor,
       currentSize: currentSize,
+      usePressure: usePressure,
       timestamp: Date.now()
     };
     localStorage.setItem('blackboard_drawing', JSON.stringify(data));
@@ -379,10 +484,12 @@ function loadFromLocalStorage() {
       offsetY = data.offsetY || 0;
       currentColor = data.currentColor || "#ffffff";
       currentSize = data.currentSize || 2;
+      usePressure = data.usePressure !== undefined ? data.usePressure : true;
       
       // Update UI
       sizeSlider.value = currentSize;
       customColorPicker.value = currentColor;
+      pressureToggleBtn.classList.toggle("mode-active", usePressure);
       
       // Update active background button
       bgButtons.forEach(btn => {
@@ -463,18 +570,37 @@ function exportRaster(format, width, height) {
       tempCtx.fillStyle = s.color;
     }
     
-    tempCtx.lineWidth = s.width;
-    if(s.points.length > 1) {
-      tempCtx.beginPath();
-      tempCtx.moveTo(s.points[0].x, s.points[0].y);
-      for(let i = 1; i < s.points.length; i++) {
-        tempCtx.lineTo(s.points[i].x, s.points[i].y);
+    if(s.usePressure && s.points.length > 1) {
+      // Draw with variable pressure
+      for(let i = 0; i < s.points.length - 1; i++) {
+        const p1 = s.points[i];
+        const p2 = s.points[i + 1];
+        const pressure1 = p1.pressure || 0.5;
+        const pressure2 = p2.pressure || 0.5;
+        const avgPressure = (pressure1 + pressure2) / 2;
+        
+        tempCtx.lineWidth = s.width * avgPressure / 0.5;
+        tempCtx.beginPath();
+        tempCtx.moveTo(p1.x, p1.y);
+        tempCtx.lineTo(p2.x, p2.y);
+        tempCtx.stroke();
       }
-      tempCtx.stroke();
-    } else if(s.points.length === 1) {
-      tempCtx.beginPath();
-      tempCtx.arc(s.points[0].x, s.points[0].y, s.width/2, 0, Math.PI * 2);
-      tempCtx.fill();
+    } else {
+      tempCtx.lineWidth = s.width;
+      if(s.points.length > 1) {
+        tempCtx.beginPath();
+        tempCtx.moveTo(s.points[0].x, s.points[0].y);
+        for(let i = 1; i < s.points.length; i++) {
+          tempCtx.lineTo(s.points[i].x, s.points[i].y);
+        }
+        tempCtx.stroke();
+      } else if(s.points.length === 1) {
+        const pressure = s.points[0].pressure || 0.5;
+        const radius = s.usePressure ? (s.width * pressure / 0.5 / 2) : (s.width / 2);
+        tempCtx.beginPath();
+        tempCtx.arc(s.points[0].x, s.points[0].y, radius, 0, Math.PI * 2);
+        tempCtx.fill();
+      }
     }
   }
 
@@ -539,89 +665,12 @@ function getDrawingBounds() {
   return {minX, minY, maxX, maxY};
 }
 
-// ============= DRAWING FUNCTIONS =============
-
-function redraw(){
-  // Clear and fill background
-  ctx.setTransform(1,0,0,1,0,0); 
-  ctx.fillStyle=bgColor; 
-  ctx.fillRect(0,0,width,height);
-  
-  // Create an offscreen canvas for drawing (without grid)
-  const offCanvas = document.createElement('canvas');
-  offCanvas.width = width;
-  offCanvas.height = height;
-  const offCtx = offCanvas.getContext('2d');
-  
-  // Fill offscreen canvas with background
-  offCtx.fillStyle = bgColor;
-  offCtx.fillRect(0, 0, width, height);
-  
-  // Set transformation for drawing on offscreen canvas
-  offCtx.setTransform(scale,0,0,scale,offsetX,offsetY);
-  offCtx.lineCap="round"; 
-  offCtx.lineJoin="round";
-  
-  // Draw all strokes on offscreen canvas
-  for(const s of strokes){
-    if(s.isEraser) {
-      // Use destination-out to actually erase pixels
-      offCtx.globalCompositeOperation = "destination-out";
-      offCtx.strokeStyle = "rgba(0,0,0,1)";
-      offCtx.fillStyle = "rgba(0,0,0,1)";
-    } else {
-      offCtx.globalCompositeOperation = "source-over";
-      offCtx.strokeStyle = s.color;
-      offCtx.fillStyle = s.color;
-    }
-    
-    offCtx.lineWidth=s.width;
-    if(s.points.length > 1) {
-      offCtx.beginPath(); 
-      offCtx.moveTo(s.points[0].x,s.points[0].y);
-      for(let i=1;i<s.points.length;i++) {
-        offCtx.lineTo(s.points[i].x,s.points[i].y);
-      }
-      offCtx.stroke();
-    } else if(s.points.length === 1) {
-      offCtx.beginPath();
-      offCtx.arc(s.points[0].x, s.points[0].y, s.width/2, 0, Math.PI * 2);
-      offCtx.fill();
-    }
-  }
-  
-  // Draw the offscreen canvas onto main canvas
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.drawImage(offCanvas, 0, 0);
-}
-
-// Brush preview
-function updateBrushPreview(){
-  brushPreview.style.width=currentSize+"px";
-  brushPreview.style.height=currentSize+"px";
-  brushPreview.style.borderColor=(mode==="erase"?"red":currentColor);
-  brushPreview.style.borderStyle=(mode==="erase"?"dashed":"solid");
-}
-
-function updateModeButtons() {
-  drawModeBtn.classList.toggle("mode-active", mode === "draw");
-  eraserBtn.classList.toggle("mode-active", mode === "erase");
-  
-  if(mode === "draw") {
-    toolIcon.textContent = "✏️";
-    toolName.textContent = "Четка";
-  } else {
-    toolIcon.textContent = "🩹";
-    toolName.textContent = "Гума";
-  }
-}
+// ============= EVENT HANDLERS =============
 
 document.addEventListener("mousemove", e=>{
   brushPreview.style.left=e.clientX+"px";
   brushPreview.style.top=e.clientY+"px";
 });
-
-// ============= EVENT HANDLERS =============
 
 // Color picker
 colorCircles.forEach(c=>c.addEventListener("click",()=>{ 
@@ -681,32 +730,44 @@ eraserBtn.onclick=()=>{
   updateModeButtons();
 };
 
-// Mouse events
+pressureToggleBtn.onclick=()=>{
+  usePressure=!usePressure;
+  pressureToggleBtn.classList.toggle("mode-active", usePressure);
+  updateBrushPreview();
+  autoSave();
+};
+
 clearStorageBtn.onclick=clearLocalStorage;
 
-// Mouse events
-canvas.addEventListener("mousedown", e=>{
+// Pointer events (supports mouse, pen, touch)
+canvas.addEventListener("pointerdown", e=>{
+  // Update pressure from pen
+  currentPressure = e.pressure > 0 ? e.pressure : 0.5;
+  
   if(e.button===1||e.shiftKey){ 
     isPanning=true; 
     lastMouse={x:e.clientX,y:e.clientY}; 
     return; 
   }
-  if(e.button===0){
+  if(e.button===0 || e.pointerType === 'pen'){
     isDrawing=true; 
     const world=screenToWorld(e.clientX,e.clientY);
+    const effectiveSize = usePressure ? (currentSize * currentPressure) : currentSize;
     
     if(mode === "draw") {
       currentStroke={
-        points:[world], 
-        width:currentSize/scale, 
+        points:[{...world, pressure: currentPressure}], 
+        width:effectiveSize/scale, 
         color:currentColor, 
-        isEraser:false
+        isEraser:false,
+        usePressure: usePressure
       };
     } else {
       currentStroke={
-        points:[world], 
-        width:currentSize/scale, 
-        isEraser:true
+        points:[{...world, pressure: currentPressure}], 
+        width:effectiveSize/scale, 
+        isEraser:true,
+        usePressure: usePressure
       };
     }
     
@@ -715,7 +776,11 @@ canvas.addEventListener("mousedown", e=>{
   }
 });
 
-canvas.addEventListener("mousemove", e=>{
+canvas.addEventListener("pointermove", e=>{
+  // Update pressure continuously
+  currentPressure = e.pressure > 0 ? e.pressure : 0.5;
+  updateBrushPreview();
+  
   if(isPanning){ 
     offsetX+=e.clientX-lastMouse.x; 
     offsetY+=e.clientY-lastMouse.y; 
@@ -725,12 +790,14 @@ canvas.addEventListener("mousemove", e=>{
   }
   if(isDrawing && currentStroke){
     const world=screenToWorld(e.clientX,e.clientY);
-    currentStroke.points.push(world);
+    const effectiveSize = usePressure ? (currentSize * currentPressure) : currentSize;
+    currentStroke.points.push({...world, pressure: currentPressure});
+    currentStroke.width = effectiveSize/scale;
     redraw();
   }
 });
 
-canvas.addEventListener("mouseup", e=>{
+canvas.addEventListener("pointerup", e=>{
   if(isPanning){ 
     isPanning=false;
     autoSave();
@@ -739,7 +806,10 @@ canvas.addEventListener("mouseup", e=>{
   if(isDrawing){ 
     isDrawing=false;
     if(currentStroke) {
-      const strokeToSave = {...currentStroke, points: [...currentStroke.points]};
+      const strokeToSave = {
+        ...currentStroke, 
+        points: currentStroke.points.map(p => ({...p}))
+      };
       undoStack.push({ 
         undo:()=>{ 
           strokes.pop(); 
